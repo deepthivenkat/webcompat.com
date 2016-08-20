@@ -1,0 +1,3 @@
+ALTER TABLE webcompat_issues ADD creation_time Timestamp
+ALTER TABLE webcompat_issues ADD last_change_time Timestamp
+

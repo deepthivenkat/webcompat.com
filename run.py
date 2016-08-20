@@ -32,6 +32,12 @@ https://github.com/webcompat/webcompat.com/blob/master/CONTRIBUTING.md#configuri
 ==============================================
 '''
 
+FILE_NOT_FOUND_ERROR = '''
+==============================================
+Cannot update issues.db schema. issues.db file not found.
+==============================================
+'''
+
 
 try:
     from webcompat import app
@@ -104,8 +110,15 @@ if __name__ == '__main__':
     parser.add_argument('-t', '--testmode', action='store_true',
                         help='Run server in "test mode".')
     parser.add_argument('--backup', action='store_true',
-                        help='backup existing issues.db and update db schema and issues dump.')
+                        help='backup existing issues.db.')
+    parser.add_argument('--update', action='store_true',
+                        help='update issues db schema.')
     args = parser.parse_args()
+    issue_engine = create_engine('sqlite:///' + os.path.join(app.config['BASE_DIR'], 'issues.db'))
+    issue_session_maker = sessionmaker(autocommit=False,
+                                       autoflush=False,
+                                       bind=issue_engine)
+    issue_db = scoped_session(issue_session_maker)
 
     if args.testmode:
         # disable HttpOnly setting for session cookies so Selenium
@@ -115,11 +128,6 @@ if __name__ == '__main__':
         print("Starting server in ~*TEST MODE*~")
         app.run(host='localhost')
     elif args.backup:
-        issue_engine = create_engine('sqlite:///' + os.path.join(app.config['BASE_DIR'], 'issues.db'))
-        issue_session_maker = sessionmaker(autocommit=False,
-                                           autoflush=False,
-                                           bind=issue_engine)
-        issue_db = scoped_session(issue_session_maker)
         # Take a backup if issues.db has data dump.
         # TODO: write code for creating issues dump in the issues.db with updated schema
         if issue_db().execute('select count(*) from webcompat_issues').fetchall()[0][0] > 0:
@@ -134,6 +142,20 @@ if __name__ == '__main__':
             backup_files.sort()
             for old_file in backup_files[:-3]:
                 os.remove(app.config['BACKUP_DEFAULT_DEST'] + old_file)
+    elif args.update:
+        if os.path.exists(os.getcwd() + '/issues.db') and os.path.exists(os.getcwd() + '/update-db'):
+            lines = [line.rstrip('\n') for line in open(os.getcwd() + '/update-db')]
+            if not lines:
+                print 'There was an error reading commands from db-update-commands file'
+            else:
+                for line in lines:
+                    issue_db().execute(line)
+                    try:
+                        issue_db().commit()
+                    except:
+                        issue_db.rollback()
+        else:
+            sys.exit(FILE_NOT_FOUND_ERROR)
     else:
         if check_pip_deps():
             app.run(host='localhost')
